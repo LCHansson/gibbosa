@@ -1,0 +1,48 @@
+---
+title: "Projektplan"
+author: "Love Hansson"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Övergripande mål
+
+- Promota `rKolada`
+- Storytelling för kommundata
+
+
+## TODO
+
+- Överväg bok-idé
+- Featureförslag Kolada
+- Personlig sida på `lchansson.github.io`? Det där "vykorts"-paketet kanske?
+- Uppdatera LinkedIn bio
+
+### Stats
+
+- Outlier detection
+- Korrelationer i heterogen data
+- Klustringsvarianter
+
+
+
+
+
+# 1. Data
+- Hitta KPIer
+- Klusteranalys: samvariation
+-- Inom kluster
+-- Mellan kluster
+- Förklaringsgrad: linjär eller annan regression mot intressanta utfallsvariabler
+- PCA eller annan dimensionsreducering av data
+
+# 2. Resultat
+- Hitta tematiska spår
+- Markdown-plattform
+- Testa webbformatet
+- Hitta kommungrupper
+
+- Bolla med Jens, Mia, Karim, Mattias

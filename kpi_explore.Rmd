@@ -1,0 +1,36 @@
+---
+title: "Kolada-nyckeltal"
+author: "Love Hansson"
+date: "3/22/2022"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+library("tidyverse")
+library("rKolada")
+```
+
+
+```{r get_raw_data, echo = FALSE, message=FALSE, warning=FALSE, include=FALSE}
+kk <- get_kpi(cache = TRUE, cache_location = "~/dev/gibbosa/kolada_cache/")
+kkg <- get_kpi_groups(cache = TRUE, cache_location = "~/dev/gibbosa/kolada_cache/")
+km <- get_municipality(cache = TRUE, cache_location = "~/dev/gibbosa/kolada_cache/")
+kmg <- get_municipality_groups(cache = TRUE, cache_location = "~/dev/gibbosa/kolada_cache/")
+ko <- get_ou(cache = TRUE, cache_location = "~/dev/gibbosa/kolada_cache/")
+```
+
+
+## Skola
+
+```{r school_kpis}
+highschools_kpis <- kpi_search(kk, "gymnasi", column = "title")
+```
+
+```{r, results='asis'}
+highschools_kpis <- highschools_kpis %>% kpi_bind_keywords(n = 3)
+kpi_describe(highschools_kpis, format = "md", max_n = Inf)
+```
+
