@@ -80,20 +80,19 @@ pop_data <- get_values("N01951", period = 2000:2021, municipality = km %>% filte
 
 ## Equality, income, gini
 income_equality_data <- get_values(
-  c("N00956", "N00997", "N00011", "N00952", "N00905", "N00906", "U01803"),
+  c("N00956", "N00997", "N00011", "N00952", "N00905", "N00906"),
   period = 2000:2021,
   municipality = km %>% filter(type == "K") %>% pull(id),
   simplify = FALSE
 ) %>% 
   mutate(kpi_category = "economy")
 
-## Education
+## Education ####
 
-## Politics
+## Politics ####
 politics_variables <- c(
   "N00664", "N00665", "N05813", "N05812", "N05817", "N05820", "N05811", "N05810", "N05814",
-  "N05825", "N05827", "N00658", "N05830", "N05403", "U17413", "N05401", "N05833", "N05831", "N05404",
-  "U65869", "U65868", "U65867", "U65866", "U65865", "U65864", "U65863", "U65862", "U65861", "U65860",
+  "N05825", "N05827", "N00658", "N05830", "N05403", "N05401", "N05833", "N05831", "N05404",
   "N65841", "N65843", "N65842", "N65848", "N65846", "N65847", "N65845", "N65844", "N65849",
   "N05807", "N05808", "N05806", "N05803", "N05805", "N05801", "N05804", "N05802", "N05809")
 
@@ -149,13 +148,45 @@ environment_data <- environment_vars %>% map_df(~get_values(
 )) %>% bind_rows() %>% 
   mutate(kpi_category = "environment")
 
-## Antibiotics
+## Antibiotics ####
 antibi_data <- get_values("N00404", period = 2000:2021, municipality = km %>% filter(type == "K") %>% pull(id), simplify = FALSE) %>% 
   mutate(kpi_category = "health")
 
+health_vars <- c(
+  kpi_search(kk, "livskvalit")$id,
+  kpi_search(kk, "kvarvarande tänder")$id,
+  kpi_search(kk, "karies")$id,
+  kpi_search(kk, "Nettokostnad hälso- och sjukvård")$id,
+  kpi_search(kk, "Nettokostnad läkemedel, totalt ")$id
+)
+
+health_data <- health_vars %>% map_df(~get_values(
+  kpi = .x,
+  period = 2000:2021,
+  municipality = km %>% filter(type == "K") %>% pull(id),
+  simplify = FALSE,
+  verbose = TRUE
+)) %>% bind_rows() %>% 
+  mutate(kpi_category = "health")
+health_data <- health_data %>% 
+  bind_rows(antibi_data)
+
+## Drugs ####
+drugs_vars <- kpi_search(kk, "narkotika")$id
+drugs_data <- drugs_vars %>% map_df(~get_values(
+  kpi = .x,
+  period = 2000:2021,
+  municipality = km %>% filter(type == "K") %>% pull(id),
+  simplify = FALSE,
+  verbose = TRUE
+)) %>% bind_rows() %>% 
+  mutate(kpi_category = "drugs")
 
 ## Munge ----
-all_data <- bind_rows(grp_data, income_equality_data, longev_data, politics_data, pop_data)
+all_data <- bind_rows(
+  grp_data, income_equality_data, longev_data, politics_data, pop_data,
+  health_data, drugs_data
+)
 
 latest_data_nogender <- all_data %>% 
   group_by(kpi, municipality) %>% 
@@ -178,6 +209,135 @@ cor_prep <- latest_data_nogender %>%
 cors <- cor(cor_prep)
 
 corrplot(cors, method = "color")
+
+## Election clustering ----
+election_var_matrix <- kk %>%
+  filter(id %in% politics_variables) %>% 
+  mutate(
+    party = str_extract(title, "(?<=Röster på ).*(?= i senaste)"),
+    election = str_extract(title, "(?<=i senaste ).*(?=,)")
+  ) %>%
+  select(kpi = id, party, election) %>% 
+  filter(!is.na(party), !is.na(election))
+
+election_results <- politics_data %>% 
+  inner_join(election_var_matrix, by = "kpi") %>% 
+  filter(period == 2018) %>% 
+  select(-c(gender, status, kpi_category, kpi)) %>% 
+  pivot_wider(values_from = value, names_from = party) %>% 
+  select(-`övriga partier`)
+
+election_clustering_data <- election_results %>% 
+  filter(election == "kommunvalet") %>% 
+  select(-c(period, count, election)) %>% 
+  column_to_rownames("municipality") %>% 
+  scale()
+
+
+# Optimal number of clusters?
+library("factoextra")
+
+election_clustering_data %>% 
+  fviz_nbclust(
+    # cluster::clara, method = "silhouette"
+    cluster::clara, method = "wss"
+    # cluster::clara, method = "gap_stat"
+    # NbClust::NbClust, method = "wss"
+  )
+# cluster::clara yields 7 clusters
+
+library("NbClust")
+available_methods <- c(
+  "ward.D", "ward.D2", "single", "complete", "average",
+  "mcquitty", "median", "centroid", "kmeans")
+optimal_clusters <- map(available_methods, function(method, data) {
+  clust <- NbClust::NbClust(data, method = method, min.nc = 4)
+  concensus_cluster <- clust$Best.nc[1,] %>%
+    as_tibble() %>%
+    count(value) %>%
+    filter(n == max(n)) %>%
+    pull(value)
+  
+  names(concensus_cluster) <- method
+  
+  concensus_cluster
+}, election_clustering_data)
+optimal_clusters %>% unlist %>% table
+# strong candidates for 2018 data: 2,6, 7
+
+# election_clusters <- NbClust::NbClust(election_clustering_data, method = "single")
+
+# Comparison: 2014 ####
+election_results_14 <- politics_data %>% 
+  inner_join(election_var_matrix, by = "kpi") %>% 
+  filter(period == 2014) %>% 
+  select(-c(gender, status, kpi_category, kpi)) %>% 
+  pivot_wider(values_from = value, names_from = party) %>% 
+  select(-`övriga partier`)
+
+election_clustering_data_14 <- election_results_14 %>% 
+  filter(election == "kommunvalet") %>% 
+  select(-c(period, count, election)) %>% 
+  column_to_rownames("municipality") %>% 
+  scale()
+
+
+# Optimal number of clusters?
+library("factoextra")
+
+election_clustering_data_14 %>% 
+  fviz_nbclust(
+    cluster::clara, method = "silhouette"
+    # cluster::clara, method = "wss"
+    # cluster::clara, method = "gap_stat"
+  )
+# cluster::clara yields 2 or 6 clusters
+
+library("NbClust")
+available_methods <- c(
+  "ward.D", "ward.D2", "single", "complete", "average",
+  "mcquitty", "median", "centroid", "kmeans")
+optimal_clusters_14 <- map(available_methods, function(method, data) {
+  clust <- NbClust::NbClust(data, method = method, min.nc = 4)
+  concensus_cluster <- clust$Best.nc[1,] %>%
+    as_tibble() %>%
+    count(value) %>%
+    filter(n == max(n)) %>%
+    pull(value)
+  
+  names(concensus_cluster) <- method
+  
+  concensus_cluster
+}, election_clustering_data_14)
+optimal_clusters_14 %>% unlist %>% table
+# 2 strongest candidate, 5 and 8 (and possibly 7, 9 or 11) looks promising
+
+# Actual clustering ####
+final_clusters <- NbClust::NbClust(election_clustering_data, method = "kmeans", min.nc = 7)
+final_clusters_14 <- NbClust::NbClust(election_clustering_data_14, method = "kmeans", min.nc = 7)
+
+politics_clusters <- election_results %>% 
+  bind_rows(election_results_14) %>% 
+  filter(election == "kommunvalet") %>% 
+  left_join(
+    final_clusters$Best.partition %>% 
+      as_tibble(rownames = "municipality") %>% 
+      rename(cluster_18 = value),
+    by = "municipality"
+  ) %>% 
+  left_join(
+    final_clusters_14$Best.partition %>%
+      as_tibble(rownames = "municipality") %>% 
+      rename(cluster_14 = value),
+    by = "municipality"
+  ) %>% 
+  select(-c(count, election))
+
+politics_clusters %>% 
+  filter(period == 2018) %>% 
+  count(cluster_18, cluster_14) %>% 
+  pivot_wider(values_from = n, names_from = cluster_14, values_fill = 0)
+# cluster coviariation is relatively weak
 
 ## Plots ----
 
