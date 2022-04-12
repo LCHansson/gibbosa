@@ -188,6 +188,20 @@ all_data <- bind_rows(
   health_data, drugs_data
 )
 
+kk_actual <- kk %>% 
+  filter(id %in% unique(all_data$kpi))
+
+kpi_inferred_metadada <- all_data %>% 
+  group_by(kpi, period, gender) %>% 
+  summarise(num = n()) %>% 
+  group_by(kpi) %>% 
+  summarise(
+    has_full_data = any(num == 290),
+    max_obs = max(num),
+    har_gender_data = any(gender != "T")
+  )
+  
+
 latest_data_nogender <- all_data %>% 
   group_by(kpi, municipality) %>% 
   filter(period == max(period), gender == "T") %>% 
@@ -340,6 +354,45 @@ politics_clusters %>%
 # cluster coviariation is relatively weak
 
 ## Plots ----
+
+party_colours <- c(
+  "Vänsterpartiet" = "red4",
+  "Socialdemokraterna" = "red1", 
+  "Miljöpartiet" = "green3",
+  "Centerpartiet" = "green4",
+  "Liberalerna" = "dodgerblue2",
+  "Moderaterna" = "dodgerblue4",
+  "Kristdemokraterna" = "slateblue4",
+  "Sverigedemokraterna" = "goldenrod4",
+  "övriga partier" = "grey60"
+)
+
+cluster_plot_data <- politics_clusters %>% 
+  pivot_longer(matches("^[A-Z]", ignore.case = FALSE), names_to = "party") %>% 
+  filter(period == 2018) %>% 
+  group_by(cluster_18, party) %>% 
+  mutate(sd = sd(value)) %>% 
+  ungroup()
+
+cluster_plot_data %>% 
+  # ggplot(aes(x = fct_relevel(party, names(party_colours)) , y = value, fill = party)) +
+  ggplot(aes(x = fct_relevel(party, names(party_colours)) , y = value, fill = party)) +
+  facet_wrap(~ cluster_18) +
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_errorbar(aes(ymin = value - sd, ymax = value + sd), stat = "summary", fun = "mean") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  theme(axis.title = element_blank(), legend.position = "none") +
+  scale_fill_manual(values = party_colours)
+
+
+cluster_plot_data %>% 
+  ggplot(aes(x = as_factor(cluster_18), y = value, fill = party)) +
+  facet_wrap(~ party) +
+  geom_bar(stat = "summary", fun = "mean") +
+  geom_errorbar(aes(ymin = value - sd, ymax = value + sd), stat = "summary", fun = "mean") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  theme(axis.title = element_blank(), legend.position = "none") +
+  scale_fill_manual(values = party_colours)
 
 # Sweden map
 # library("raster")
